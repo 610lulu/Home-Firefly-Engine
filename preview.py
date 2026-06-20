@@ -1,4 +1,6 @@
+import json
 import math
+from pathlib import Path
 import time
 import tkinter as tk
 
@@ -15,12 +17,24 @@ def _mix(a, b, amount):
 
 
 class LightPreview:
-    def __init__(self, light_count=120, width=860, height=560):
+    def __init__(
+        self,
+        light_count=120,
+        width=860,
+        height=560,
+        layout_file="",
+        background_image="",
+        show_labels=False,
+    ):
         self.light_count = light_count
         self.width = width
         self.height = height
         self.margin = 42
-        self.positions = self._build_light_positions(light_count)
+        self.layout = self._load_layout(layout_file)
+        self.background_path = background_image or self.layout.get("background", "")
+        self.positions = self._layout_positions(light_count, self.layout)
+        self.labels = self._layout_labels(self.positions, self.layout)
+        self.show_labels = show_labels or bool(self.layout.get("show_labels", False))
         self.closed = False
 
         self.root = tk.Tk()
@@ -36,6 +50,9 @@ class LightPreview:
         )
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
+        self.background_photo = None
+        self._draw_background()
+
         self.status_text = self.canvas.create_text(
             self.margin,
             24,
@@ -46,9 +63,21 @@ class LightPreview:
         )
         self.tower_marker = None
         self.light_items = []
+        self.label_items = []
         for _ in self.positions:
             item = self.canvas.create_oval(0, 0, 0, 0, outline="")
             self.light_items.append(item)
+        for label in self.labels:
+            item = self.canvas.create_text(
+                0,
+                0,
+                anchor="center",
+                fill="#F5F7FA",
+                font=("Segoe UI", 8),
+                text=label,
+                state=tk.NORMAL if self.show_labels else tk.HIDDEN,
+            )
+            self.label_items.append(item)
 
     def update(self, frame):
         if self.closed:
@@ -62,6 +91,8 @@ class LightPreview:
             color = self._hex(light["r"], light["g"], light["b"], light["brightness"])
             self.canvas.coords(item, x - radius, y - radius, x + radius, y + radius)
             self.canvas.itemconfig(item, fill=color)
+            if self.show_labels:
+                self.canvas.coords(self.label_items[light["id"]], x, y - radius - 9)
 
         tower_x = frame.get("tower_x", config.TOWER_COORD[0])
         tower_y = frame.get("tower_y", config.TOWER_COORD[1])
@@ -109,7 +140,7 @@ class LightPreview:
         lights = []
         for light_id, position in enumerate(self.positions):
             flicker = 0.92 + 0.08 * math.sin(now * 1.7 + light_id * 0.61)
-            lights.append(self._light(position, 255, 176, 72, base_brightness * flicker))
+            lights.append(self._light(light_id, position, 255, 176, 72, base_brightness * flicker))
         return lights
 
     def _render_pulse(self, frame, base_brightness, now):
@@ -132,6 +163,7 @@ class LightPreview:
             brightness = _clamp(base_brightness * flicker + local_pulse * 0.55)
             lights.append(
                 self._light(
+                    light_id,
                     position,
                     255,
                     _mix(176, 66, local_pulse),
@@ -150,7 +182,7 @@ class LightPreview:
         max_distance = max(max_distance, 0.001)
 
         lights = []
-        for position in self.positions:
+        for light_id, position in enumerate(self.positions):
             distance_to_tower = self._distance(position, tower)
             normalized_distance = distance_to_tower / max_distance
             flow_phase = (normalized_distance * 3.5 + now * 0.72) % 1.0
@@ -161,6 +193,7 @@ class LightPreview:
             flow_mix = _clamp(wave + tower_glow * 0.55)
             lights.append(
                 self._light(
+                    light_id,
                     position,
                     _mix(255, 118, flow_mix),
                     _mix(176, 224, flow_mix),
@@ -170,8 +203,9 @@ class LightPreview:
             )
         return lights
 
-    def _light(self, position, red, green, blue, brightness):
+    def _light(self, light_id, position, red, green, blue, brightness):
         return {
+            "id": light_id,
             "x": position[0],
             "y": position[1],
             "r": int(_clamp(red, 0, 255)),
@@ -191,6 +225,80 @@ class LightPreview:
             y = row / max(1, rows - 1)
             positions.append((x, y))
         return positions
+
+    def _load_layout(self, layout_file):
+        if not layout_file:
+            return {}
+
+        path = Path(layout_file)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        try:
+            with path.open("r", encoding="utf-8") as file:
+                layout = json.load(file)
+        except OSError as exc:
+            print(f"Preview layout could not be read: {path} ({exc})")
+            return {}
+        except json.JSONDecodeError as exc:
+            print(f"Preview layout is not valid JSON: {path} ({exc})")
+            return {}
+
+        layout["_base_dir"] = path.parent
+        return layout
+
+    def _layout_positions(self, light_count, layout):
+        lights = layout.get("lights")
+        if not lights:
+            return self._build_light_positions(light_count)
+
+        ordered_lights = sorted(lights, key=lambda item: int(item.get("id", 0)))
+        positions = []
+        for light in ordered_lights:
+            positions.append(
+                (
+                    _clamp(float(light.get("x", 0.0))),
+                    _clamp(float(light.get("y", 0.0))),
+                )
+            )
+        self.light_count = len(positions)
+        return positions
+
+    def _layout_labels(self, positions, layout):
+        lights = layout.get("lights") or []
+        if not lights:
+            return [str(index) for index, _ in enumerate(positions)]
+
+        ordered_lights = sorted(lights, key=lambda item: int(item.get("id", 0)))
+        labels = []
+        for index, light in enumerate(ordered_lights):
+            labels.append(str(light.get("name") or light.get("id", index)))
+        return labels
+
+    def _draw_background(self):
+        if not self.background_path:
+            return
+
+        path = Path(self.background_path)
+        if not path.is_absolute():
+            base_dir = self.layout.get("_base_dir") or Path.cwd()
+            path = Path(base_dir) / path
+        try:
+            self.background_photo = tk.PhotoImage(file=str(path))
+        except tk.TclError as exc:
+            print(f"Preview background could not be loaded: {path} ({exc})")
+            return
+
+        image_width = self.background_photo.width()
+        image_height = self.background_photo.height()
+        self.width = max(self.width, image_width + self.margin * 2)
+        self.height = max(self.height, image_height + self.margin * 2)
+        self.canvas.config(width=self.width, height=self.height)
+        self.canvas.create_image(
+            self.margin,
+            self.margin,
+            image=self.background_photo,
+            anchor="nw",
+        )
 
     def _to_canvas(self, x, y):
         drawable_width = self.width - self.margin * 2

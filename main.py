@@ -12,7 +12,7 @@ def main():
     args = parse_args()
     state_machine = FireflyStateMachine()
     light_engine = LightEngine()
-    preview = create_preview(args.preview)
+    preview = create_preview(args)
     last_state = None
 
     def handle_people_count(value):
@@ -87,19 +87,40 @@ def parse_args():
         action="store_true",
         help="run the preview without connecting to the ESP32 serial bridge",
     )
+    parser.add_argument(
+        "--preview-layout",
+        default=config.PREVIEW_LAYOUT_FILE,
+        help="JSON layout file with real light coordinates",
+    )
+    parser.add_argument(
+        "--preview-background",
+        default=config.PREVIEW_BACKGROUND_IMAGE,
+        help="PNG/GIF drawing or floor plan shown behind the lights",
+    )
+    parser.add_argument(
+        "--preview-labels",
+        action="store_true",
+        default=config.PREVIEW_SHOW_LABELS,
+        help="show light id/name labels in the preview",
+    )
     args = parser.parse_args()
     if args.preview_only:
         args.preview = True
     return args
 
 
-def create_preview(enabled):
-    if not enabled:
+def create_preview(args):
+    if not args.preview:
         return None
 
     from preview import LightPreview
 
-    return LightPreview(config.PREVIEW_LIGHTS)
+    return LightPreview(
+        light_count=config.PREVIEW_LIGHTS,
+        layout_file=args.preview_layout,
+        background_image=args.preview_background,
+        show_labels=args.preview_labels,
+    )
 
 
 def run_preview_demo_inputs(state_machine):

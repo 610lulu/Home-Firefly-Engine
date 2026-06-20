@@ -29,6 +29,8 @@ Home-Firefly-Engine/
 |- light_engine.py
 |- preview.py
 |- requirements.txt
+|- layouts/
+|  `- example_layout.json
 |- esp32/
 |  |- bridge_node.ino
 |  |- sensor_node.ino
@@ -85,6 +87,12 @@ To test the light logic without any ESP32 connected:
 python main.py --preview-only
 ```
 
+To preview on a real layout with light labels:
+
+```bash
+python main.py --preview-only --preview-layout layouts/example_layout.json --preview-labels
+```
+
 If your Python launcher is `py`, use:
 
 ```bash
@@ -101,6 +109,9 @@ Edit `config.py` or use environment variables.
 | `FIREFLY_SERIAL_BAUDRATE` | `115200` | Serial baud rate |
 | `FIREFLY_FRAME_RATE` | `20` | Python control packet rate |
 | `FIREFLY_PREVIEW_LIGHTS` | `120` | Number of virtual lights in the desktop preview |
+| `FIREFLY_PREVIEW_LAYOUT` | empty | JSON layout file for preview coordinates |
+| `FIREFLY_PREVIEW_BACKGROUND` | empty | PNG/GIF drawing shown behind the preview lights |
+| `FIREFLY_PREVIEW_LABELS` | `0` | Set to `1` to show light labels |
 | `FIREFLY_HOMECOMING_THRESHOLD` | `20` | People count threshold |
 | `FIREFLY_HOMECOMING_DURATION` | `30` | Homecoming duration in seconds |
 | `FIREFLY_PEOPLE_COUNT_MAX` | `20` | People count that maps to max brightness |
@@ -260,7 +271,34 @@ Run without hardware:
 python main.py --preview-only
 ```
 
-The preview is useful for tuning `FIREFLY_TOWER_X`, `FIREFLY_TOWER_Y`, `FIREFLY_PULSE_CENTER_X`, `FIREFLY_PULSE_CENTER_Y`, and `FIREFLY_PULSE_RADIUS` before testing on physical LEDs.
+Run with a labeled layout file:
+
+```bash
+python main.py --preview-only --preview-layout layouts/example_layout.json --preview-labels
+```
+
+Run with a drawing or floor plan behind the lights:
+
+```bash
+python main.py --preview-only --preview-layout layouts/example_layout.json --preview-background path/to/floorplan.png --preview-labels
+```
+
+Layout files use normalized coordinates from `0.0` to `1.0`:
+
+```json
+{
+  "background": "floorplan.png",
+  "show_labels": true,
+  "lights": [
+    {"id": 0, "name": "A01", "x": 0.10, "y": 0.78},
+    {"id": 1, "name": "A02", "x": 0.18, "y": 0.72}
+  ]
+}
+```
+
+`id` should match the LED index or fixture channel. `name` is the label shown in the preview. `x` and `y` are positions on the drawing, where `(0, 0)` is top-left and `(1, 1)` is bottom-right.
+
+The preview is useful for tuning `FIREFLY_TOWER_X`, `FIREFLY_TOWER_Y`, `FIREFLY_PULSE_CENTER_X`, `FIREFLY_PULSE_CENTER_Y`, and `FIREFLY_PULSE_RADIUS` before testing on physical LEDs. The layout affects the computer preview; for physical LEDs to match exactly, mirror the same coordinates or fixture areas in `esp32/light_node.ino`.
 
 ## ESP-NOW Packet Strategy
 
