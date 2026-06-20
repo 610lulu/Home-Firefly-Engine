@@ -28,6 +28,7 @@ Home-Firefly-Engine/
 |- espnow_serial.py
 |- light_engine.py
 |- preview.py
+|- web_preview.html
 |- requirements.txt
 |- layouts/
 |  `- example_layout.json
@@ -91,6 +92,12 @@ To preview on a real layout with light labels:
 
 ```bash
 python main.py --preview-only --preview-layout layouts/example_layout.json --preview-labels
+```
+
+To test immediately in a browser without Python, ESP32, or sensor data, open:
+
+```text
+web_preview.html
 ```
 
 If your Python launcher is `py`, use:
@@ -299,6 +306,26 @@ Layout files use normalized coordinates from `0.0` to `1.0`:
 `id` should match the LED index or fixture channel. `name` is the label shown in the preview. `x` and `y` are positions on the drawing, where `(0, 0)` is top-left and `(1, 1)` is bottom-right.
 
 The preview is useful for tuning `FIREFLY_TOWER_X`, `FIREFLY_TOWER_Y`, `FIREFLY_PULSE_CENTER_X`, `FIREFLY_PULSE_CENTER_Y`, and `FIREFLY_PULSE_RADIUS` before testing on physical LEDs. The layout affects the computer preview; for physical LEDs to match exactly, mirror the same coordinates or fixture areas in `esp32/light_node.ino`.
+
+## Browser Preview
+
+`web_preview.html` is a standalone browser preview for quick testing. It does not require Python, serial, ESP32, or live sensor data.
+
+Open it directly in a browser:
+
+```text
+web_preview.html
+```
+
+The page starts in demo mode and simulates people count, heart rate, `pulse`, and `homecoming`. You can:
+
+- switch state manually
+- move people and heart-rate sliders
+- toggle light labels
+- load a layout JSON file
+- load a drawing image behind the lights
+
+Use the same normalized layout format as `layouts/example_layout.json`.
 
 ## ESP-NOW Packet Strategy
 
