@@ -1,0 +1,41 @@
+import os
+
+
+def _int_env(name, default):
+    value = os.getenv(name)
+    return default if value is None else int(value)
+
+
+def _float_env(name, default):
+    value = os.getenv(name)
+    return default if value is None else float(value)
+
+
+SERIAL_PORT = os.getenv("FIREFLY_SERIAL_PORT", "COM3")
+SERIAL_BAUDRATE = _int_env("FIREFLY_SERIAL_BAUDRATE", 115200)
+SERIAL_TIMEOUT_SECONDS = _float_env("FIREFLY_SERIAL_TIMEOUT", 0.02)
+SERIAL_WRITE_TIMEOUT_SECONDS = _float_env("FIREFLY_SERIAL_WRITE_TIMEOUT", 0.2)
+SERIAL_BOOT_DELAY_SECONDS = _float_env("FIREFLY_SERIAL_BOOT_DELAY", 2.0)
+SERIAL_MAX_LINES_PER_TICK = _int_env("FIREFLY_SERIAL_MAX_LINES_PER_TICK", 20)
+
+FRAME_RATE = _float_env("FIREFLY_FRAME_RATE", 20.0)
+FRAME_INTERVAL = 1.0 / FRAME_RATE
+
+HOMECOMING_THRESHOLD = _int_env("FIREFLY_HOMECOMING_THRESHOLD", 20)
+HOMECOMING_DURATION_SECONDS = _float_env("FIREFLY_HOMECOMING_DURATION", 30.0)
+HEART_RATE_TIMEOUT_SECONDS = _float_env("FIREFLY_HEART_RATE_TIMEOUT", 8.0)
+
+PEOPLE_COUNT_MAX_FOR_BRIGHTNESS = _int_env("FIREFLY_PEOPLE_COUNT_MAX", 20)
+MIN_BRIGHTNESS = _float_env("FIREFLY_MIN_BRIGHTNESS", 0.08)
+MAX_BRIGHTNESS = _float_env("FIREFLY_MAX_BRIGHTNESS", 1.0)
+
+TOWER_COORD = (
+    _float_env("FIREFLY_TOWER_X", 0.5),
+    _float_env("FIREFLY_TOWER_Y", 0.08),
+)
+
+PULSE_CENTER = (
+    _float_env("FIREFLY_PULSE_CENTER_X", 0.38),
+    _float_env("FIREFLY_PULSE_CENTER_Y", 0.62),
+)
+PULSE_RADIUS = _float_env("FIREFLY_PULSE_RADIUS", 0.32)
