@@ -16,10 +16,19 @@ class LightEngine:
     def __init__(self):
         self._frame_index = 0
 
-    def render(self, state, people_count, heart_rate, homecoming_remaining=0.0, now=None):
+    def render(
+        self,
+        state,
+        people_count,
+        heart_rate,
+        people_positions=None,
+        homecoming_remaining=0.0,
+        now=None,
+    ):
         now = time.monotonic() if now is None else now
         state_value = state.value if isinstance(state, FireflyState) else str(state)
         base_brightness = self._brightness_from_people_count(people_count)
+        people_positions = people_positions or []
 
         self._frame_index += 1
         return {
@@ -29,6 +38,9 @@ class LightEngine:
             "people_count": int(people_count),
             "heart_rate": round(float(heart_rate), 2),
             "brightness": round(base_brightness, 4),
+            "idle_brightness": round(config.IDLE_BRIGHTNESS, 4),
+            "presence_radius": round(config.PRESENCE_RADIUS, 4),
+            "people_positions": people_positions[: config.MAX_PRESENCE_POINTS],
             "tower_x": config.TOWER_COORD[0],
             "tower_y": config.TOWER_COORD[1],
             "pulse_x": config.PULSE_CENTER[0],

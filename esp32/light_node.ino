@@ -20,6 +20,7 @@ const uint8_t PACKET_CONTROL = 2;
 const uint8_t STATE_WAITING = 0;
 const uint8_t STATE_PULSE = 1;
 const uint8_t STATE_HOMECOMING = 2;
+const uint8_t MAX_PRESENCE_POINTS = 6;
 const float TAU = 6.28318530718;
 
 struct __attribute__((packed)) ControlPacket {
@@ -28,30 +29,22 @@ struct __attribute__((packed)) ControlPacket {
   uint16_t peopleCount;
   uint16_t heartRate;
   uint16_t frame;
+  uint8_t presenceCount;
   float brightness;
+  float idleBrightness;
+  float presenceRadius;
   float towerX;
   float towerY;
   float pulseX;
   float pulseY;
   float pulseRadius;
   float homecomingRemaining;
+  float presenceX[MAX_PRESENCE_POINTS];
+  float presenceY[MAX_PRESENCE_POINTS];
 };
 
 CRGB leds[NUM_LEDS];
-ControlPacket currentControl = {
-  PACKET_CONTROL,
-  STATE_WAITING,
-  0,
-  0,
-  0,
-  0.08,
-  0.5,
-  0.08,
-  0.38,
-  0.62,
-  0.32,
-  0.0
-};
+ControlPacket currentControl = {};
 
 unsigned long lastControlAt = 0;
 unsigned long lastRenderAt = 0;
@@ -103,9 +96,48 @@ void setScaledLed(uint16_t id, uint8_t r, uint8_t g, uint8_t b, float brightness
   );
 }
 
-void renderWaiting(uint16_t id, float baseBrightness, float seconds) {
+void setDefaultControl() {
+  currentControl.type = PACKET_CONTROL;
+  currentControl.state = STATE_WAITING;
+  currentControl.peopleCount = 0;
+  currentControl.heartRate = 0;
+  currentControl.frame = 0;
+  currentControl.presenceCount = 0;
+  currentControl.brightness = 0.08;
+  currentControl.idleBrightness = 0.012;
+  currentControl.presenceRadius = 0.22;
+  currentControl.towerX = 0.5;
+  currentControl.towerY = 0.08;
+  currentControl.pulseX = 0.38;
+  currentControl.pulseY = 0.62;
+  currentControl.pulseRadius = 0.32;
+  currentControl.homecomingRemaining = 0.0;
+}
+
+float presenceInfluence(float x, float y, const ControlPacket& packet) {
+  if (packet.presenceCount == 0) {
+    return 0.0;
+  }
+
+  float strongest = 0.0;
+  float radius = max(packet.presenceRadius, 0.001f);
+  for (uint8_t i = 0; i < packet.presenceCount && i < MAX_PRESENCE_POINTS; i++) {
+    float influence = 1.0 - distancef(x, y, packet.presenceX[i], packet.presenceY[i]) / radius;
+    influence = clampf(influence, 0.0, 1.0);
+    strongest = max(strongest, influence * influence);
+  }
+  return strongest;
+}
+
+void renderWaiting(uint16_t id, const ControlPacket& packet, float baseBrightness, float seconds) {
+  float x;
+  float y;
+  ledPosition(id, &x, &y);
+
+  float presence = presenceInfluence(x, y, packet);
   float flicker = 0.92 + 0.08 * sinf(seconds * 1.7 + id * 0.61);
-  setScaledLed(id, 255, 176, 72, baseBrightness * flicker);
+  float brightness = packet.idleBrightness + presence * baseBrightness * flicker;
+  setScaledLed(id, 255, 176, 72, brightness);
 }
 
 void renderPulse(uint16_t id, const ControlPacket& packet, float baseBrightness, float seconds) {
@@ -121,8 +153,13 @@ void renderPulse(uint16_t id, const ControlPacket& packet, float baseBrightness,
   float pulseDistance = distancef(x, y, packet.pulseX, packet.pulseY);
   float pulseInfluence = clampf(1.0 - pulseDistance / packet.pulseRadius, 0.0, 1.0);
   float localPulse = breath * pulseInfluence;
+  float presence = presenceInfluence(x, y, packet);
   float flicker = 0.9 + 0.1 * sinf(seconds * 1.3 + id * 0.47);
-  float brightness = clampf(baseBrightness * flicker + localPulse * 0.55, 0.0, 1.0);
+  float brightness = clampf(
+    packet.idleBrightness + presence * (baseBrightness * flicker + localPulse * 0.55),
+    0.0,
+    1.0
+  );
 
   uint8_t red = 255;
   uint8_t green = (uint8_t)mixf(176, 66, localPulse);
@@ -142,7 +179,12 @@ void renderHomecoming(uint16_t id, const ControlPacket& packet, float baseBright
   wave = powf(max(0.0f, wave), 2.7);
 
   float towerGlow = powf(1.0 - normalizedDistance, 1.7);
-  float brightness = clampf(baseBrightness * 0.48 + wave * 0.78 + towerGlow * 0.35, 0.0, 1.0);
+  float presence = presenceInfluence(x, y, packet);
+  float brightness = clampf(
+    packet.idleBrightness + presence * (baseBrightness * 0.48 + wave * 0.78 + towerGlow * 0.35),
+    0.0,
+    1.0
+  );
   float flowMix = clampf(wave + towerGlow * 0.55, 0.0, 1.0);
 
   uint8_t red = (uint8_t)mixf(255, 118, flowMix);
@@ -155,9 +197,11 @@ void renderLights() {
   ControlPacket packet = currentControl;
   float seconds = millis() / 1000.0;
   float baseBrightness = clampf(packet.brightness, 0.0, 1.0);
+  packet.idleBrightness = clampf(packet.idleBrightness, 0.0, 0.08);
 
   if (millis() - lastControlAt > CONTROL_TIMEOUT_MS) {
     baseBrightness *= 0.25;
+    packet.idleBrightness *= 0.25;
   }
 
   float maxDistance = maxTowerDistance(packet);
@@ -167,7 +211,7 @@ void renderLights() {
     } else if (packet.state == STATE_PULSE) {
       renderPulse(i, packet, baseBrightness, seconds);
     } else {
-      renderWaiting(i, baseBrightness, seconds);
+      renderWaiting(i, packet, baseBrightness, seconds);
     }
   }
 
@@ -219,6 +263,7 @@ void setup() {
   FastLED.addLeds<WS2812B, LED_PIN, GRB>(leds, NUM_LEDS);
   FastLED.setBrightness(GLOBAL_BRIGHTNESS);
   FastLED.clear(true);
+  setDefaultControl();
 
   setupEspNow();
   lastControlAt = millis();

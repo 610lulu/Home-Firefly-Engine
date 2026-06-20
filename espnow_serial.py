@@ -10,9 +10,10 @@ except ImportError:
 
 
 class EspNowSerialBridge:
-    def __init__(self, on_people_count, on_heart_rate):
+    def __init__(self, on_people_count, on_heart_rate, on_presence=None):
         self.on_people_count = on_people_count
         self.on_heart_rate = on_heart_rate
+        self.on_presence = on_presence
         self.connection = None
 
     def connect(self):
@@ -77,3 +78,8 @@ class EspNowSerialBridge:
             self.on_heart_rate(message["heart_rate"])
         elif message_type == "heart_rate" and "value" in message:
             self.on_heart_rate(message["value"])
+
+        if self.on_presence and "x" in message and "y" in message:
+            zone_id = message.get("zone_id") or message.get("mac") or "default"
+            people_count = int(message.get("people_count", 1))
+            self.on_presence(zone_id, message["x"], message["y"], people_count)

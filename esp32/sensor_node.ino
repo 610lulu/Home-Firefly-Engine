@@ -11,11 +11,15 @@ const uint8_t PACKET_SENSOR = 1;
 const bool SIMULATION_MODE = true;
 const int HEART_SENSOR_PIN = 34;
 const int PEOPLE_SENSOR_PIN = 35;
+const float SENSOR_X = 0.38;
+const float SENSOR_Y = 0.62;
 
 struct __attribute__((packed)) SensorPacket {
   uint8_t type;
   uint16_t peopleCount;
   uint16_t heartRate;
+  float sensorX;
+  float sensorY;
   uint32_t sequence;
 };
 
@@ -88,6 +92,8 @@ void loop() {
     packet.type = PACKET_SENSOR;
     packet.peopleCount = peopleCount;
     packet.heartRate = heartRate;
+    packet.sensorX = SENSOR_X;
+    packet.sensorY = SENSOR_Y;
     packet.sequence = sequence++;
 
     esp_err_t result = esp_now_send(

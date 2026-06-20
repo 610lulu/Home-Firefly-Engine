@@ -41,13 +41,14 @@ Home-Firefly-Engine/
 
 ## Runtime Behavior
 
-- Sensor ESP32 sends `people_count` and `heart_rate` to the bridge by ESP-NOW.
+- Sensor ESP32 sends `people_count`, `heart_rate`, and its local `SENSOR_X/Y` zone coordinate to the bridge by ESP-NOW.
 - Bridge ESP32 forwards sensor values to Python as newline-delimited serial JSON.
 - Python updates the state machine.
-- More people increases global brightness.
-- Heart rate switches the system into `pulse` and controls a local breathing group.
+- More people increases the maximum brightness near active people zones.
+- Lights outside active people zones stay at a very low idle glow.
+- Heart rate switches the system into `pulse` and controls breathing near people.
 - If `people_count > 20`, Python triggers `homecoming` for 30 seconds.
-- During `homecoming`, light ESP32 nodes render waves that flow by coordinate toward the configured tower coordinate.
+- During `homecoming`, light ESP32 nodes render waves near active people zones that flow by coordinate toward the configured tower coordinate.
 - After 30 seconds, Python returns to `waiting`.
 
 ## Python Setup
@@ -119,6 +120,10 @@ Edit `config.py` or use environment variables.
 | `FIREFLY_PREVIEW_LAYOUT` | empty | JSON layout file for preview coordinates |
 | `FIREFLY_PREVIEW_BACKGROUND` | empty | PNG/GIF drawing shown behind the preview lights |
 | `FIREFLY_PREVIEW_LABELS` | `0` | Set to `1` to show light labels |
+| `FIREFLY_MAX_PRESENCE_POINTS` | `6` | Max active people/zone points sent to light nodes |
+| `FIREFLY_PRESENCE_RADIUS` | `0.22` | Distance around a person/zone where lights can brighten |
+| `FIREFLY_PRESENCE_TIMEOUT` | `3` | Seconds before a quiet sensor zone fades out |
+| `FIREFLY_IDLE_BRIGHTNESS` | `0.012` | Very low glow when no one is nearby |
 | `FIREFLY_HOMECOMING_THRESHOLD` | `20` | People count threshold |
 | `FIREFLY_HOMECOMING_DURATION` | `30` | Homecoming duration in seconds |
 | `FIREFLY_PEOPLE_COUNT_MAX` | `20` | People count that maps to max brightness |
@@ -191,6 +196,15 @@ readHeartRate()
 
 with your real sensor logic.
 
+Set the sensor's physical zone coordinate in normalized installation space:
+
+```cpp
+const float SENSOR_X = 0.38;
+const float SENSOR_Y = 0.62;
+```
+
+If you use multiple sensor ESP32 nodes, place each one at a different `SENSOR_X/Y`. Those coordinates define which nearby lights are allowed to brighten.
+
 ### 3. Light Node
 
 Open and flash:
@@ -234,7 +248,7 @@ const float FIXTURE_SCALE_X = 0.5;
 Bridge to Python:
 
 ```json
-{"type":"sensor","people_count":12,"heart_rate":78,"sequence":42}
+{"type":"sensor","zone_id":"AA:BB:CC:DD:EE:FF","people_count":12,"heart_rate":78,"x":0.38,"y":0.62,"sequence":42}
 ```
 
 Python to bridge:
@@ -247,6 +261,11 @@ Python to bridge:
   "people_count": 12,
   "heart_rate": 78,
   "brightness": 0.632,
+  "idle_brightness": 0.012,
+  "presence_radius": 0.22,
+  "people_positions": [
+    {"x": 0.38, "y": 0.62, "weight": 12}
+  ],
   "tower_x": 0.5,
   "tower_y": 0.08,
   "pulse_x": 0.38,
@@ -258,13 +277,17 @@ Python to bridge:
 
 The bridge converts this JSON into a small ESP-NOW binary packet before broadcasting to light nodes.
 
+`people_positions` is the important part for local lighting. A lamp only becomes bright when it is near one of these points. With no active positions, lamps remain at `idle_brightness`.
+
 ## Desktop Preview
 
 The preview window is a local simulator for the light control parameters. It renders a virtual grid of LEDs using the same visual rules as `esp32/light_node.ino`:
 
 - `waiting`: warm firefly flicker
-- `pulse`: heartbeat-driven local breathing
-- `homecoming`: waves flowing toward the tower coordinate
+- `pulse`: heartbeat-driven breathing near people
+- `homecoming`: waves near people flowing toward the tower coordinate
+
+White rings mark simulated people/active zones.
 
 Run with real ESP32 data and real ESP-NOW output:
 
@@ -325,6 +348,8 @@ The page starts in demo mode and simulates people count, heart rate, `pulse`, an
 - load a layout JSON file
 - load a drawing image behind the lights
 
+White rings show simulated people/active zones. Only lights close to those rings brighten.
+
 Use the same normalized layout format as `layouts/example_layout.json`.
 
 ## ESP-NOW Packet Strategy
@@ -334,6 +359,7 @@ Sensor packet:
 - packet type
 - people count
 - heart rate
+- sensor zone coordinate
 - sequence number
 
 Control packet:
@@ -344,6 +370,9 @@ Control packet:
 - heart rate
 - frame number
 - brightness
+- idle brightness
+- presence radius
+- active people/zone coordinates
 - tower coordinate
 - pulse center and radius
 - homecoming remaining time

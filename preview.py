@@ -64,6 +64,7 @@ class LightPreview:
         self.tower_marker = None
         self.light_items = []
         self.label_items = []
+        self.person_items = []
         for _ in self.positions:
             item = self.canvas.create_oval(0, 0, 0, 0, outline="")
             self.light_items.append(item)
@@ -78,6 +79,10 @@ class LightPreview:
                 state=tk.NORMAL if self.show_labels else tk.HIDDEN,
             )
             self.label_items.append(item)
+        for _ in range(config.MAX_PRESENCE_POINTS):
+            item = self.canvas.create_oval(0, 0, 0, 0, outline="#FFFFFF", width=2)
+            self.canvas.itemconfig(item, state=tk.HIDDEN)
+            self.person_items.append(item)
 
     def update(self, frame):
         if self.closed:
@@ -109,11 +114,14 @@ class LightPreview:
         else:
             self.canvas.coords(self.tower_marker, tx - 7, ty - 7, tx + 7, ty + 7)
 
+        self._update_person_markers(frame.get("people_positions", []))
+
         state = frame.get("state", "waiting")
         status = (
             f"state={state}  people={frame.get('people_count', 0)}  "
             f"heart={frame.get('heart_rate', 0)}  "
-            f"brightness={frame.get('brightness', 0):.2f}"
+            f"brightness={frame.get('brightness', 0):.2f}  "
+            f"presence={len(frame.get('people_positions', []))}"
         )
         if state == FireflyState.HOMECOMING.value:
             status += f"  remaining={frame.get('homecoming_remaining', 0):.1f}s"
@@ -134,13 +142,23 @@ class LightPreview:
             return self._render_homecoming(frame, base_brightness, now)
         if state == FireflyState.PULSE.value:
             return self._render_pulse(frame, base_brightness, now)
-        return self._render_waiting(base_brightness, now)
+        return self._render_waiting(frame, base_brightness, now)
 
-    def _render_waiting(self, base_brightness, now):
+    def _render_waiting(self, frame, base_brightness, now):
         lights = []
         for light_id, position in enumerate(self.positions):
             flicker = 0.92 + 0.08 * math.sin(now * 1.7 + light_id * 0.61)
-            lights.append(self._light(light_id, position, 255, 176, 72, base_brightness * flicker))
+            presence = self._presence_at(position, frame)
+            lights.append(
+                self._light(
+                    light_id,
+                    position,
+                    255,
+                    176,
+                    72,
+                    config.IDLE_BRIGHTNESS + base_brightness * flicker * presence,
+                )
+            )
         return lights
 
     def _render_pulse(self, frame, base_brightness, now):
@@ -159,8 +177,12 @@ class LightPreview:
             pulse_distance = self._distance(position, pulse_center)
             pulse_influence = _clamp(1.0 - pulse_distance / pulse_radius)
             local_pulse = breath * pulse_influence
+            presence = self._presence_at(position, frame)
             flicker = 0.9 + 0.1 * math.sin(now * 1.3 + light_id * 0.47)
-            brightness = _clamp(base_brightness * flicker + local_pulse * 0.55)
+            brightness = _clamp(
+                config.IDLE_BRIGHTNESS
+                + presence * (base_brightness * flicker + local_pulse * 0.55)
+            )
             lights.append(
                 self._light(
                     light_id,
@@ -189,7 +211,11 @@ class LightPreview:
             wave = 1.0 - min(flow_phase, 1.0 - flow_phase) * 2.0
             wave = max(0.0, wave) ** 2.7
             tower_glow = (1.0 - normalized_distance) ** 1.7
-            brightness = _clamp(base_brightness * 0.48 + wave * 0.78 + tower_glow * 0.35)
+            presence = self._presence_at(position, frame)
+            brightness = _clamp(
+                config.IDLE_BRIGHTNESS
+                + presence * (base_brightness * 0.48 + wave * 0.78 + tower_glow * 0.35)
+            )
             flow_mix = _clamp(wave + tower_glow * 0.55)
             lights.append(
                 self._light(
@@ -274,6 +300,31 @@ class LightPreview:
             labels.append(str(light.get("name") or light.get("id", index)))
         return labels
 
+    def _presence_at(self, position, frame):
+        people_positions = frame.get("people_positions") or []
+        if not people_positions:
+            return 0.0
+
+        radius = frame.get("presence_radius", config.PRESENCE_RADIUS)
+        strongest = 0.0
+        for person in people_positions:
+            point = (float(person.get("x", 0.0)), float(person.get("y", 0.0)))
+            influence = _clamp(1.0 - self._distance(position, point) / radius)
+            strongest = max(strongest, influence * influence)
+        return strongest
+
+    def _update_person_markers(self, people_positions):
+        for index, item in enumerate(self.person_items):
+            if index >= len(people_positions):
+                self.canvas.itemconfig(item, state=tk.HIDDEN)
+                continue
+
+            person = people_positions[index]
+            x, y = self._to_canvas(float(person.get("x", 0.0)), float(person.get("y", 0.0)))
+            radius = 13
+            self.canvas.coords(item, x - radius, y - radius, x + radius, y + radius)
+            self.canvas.itemconfig(item, state=tk.NORMAL, outline="#FFFFFF")
+
     def _draw_background(self):
         if not self.background_path:
             return
@@ -309,7 +360,7 @@ class LightPreview:
         )
 
     def _hex(self, red, green, blue, brightness):
-        level = 0.18 + _clamp(brightness) * 0.82
+        level = _clamp(brightness)
         return "#{:02x}{:02x}{:02x}".format(
             int(red * level),
             int(green * level),

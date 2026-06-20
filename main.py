@@ -5,6 +5,7 @@ import time
 import config
 from espnow_serial import EspNowSerialBridge
 from light_engine import LightEngine
+from presence import PresenceTracker
 from state_machine import FireflyStateMachine
 
 
@@ -12,6 +13,7 @@ def main():
     args = parse_args()
     state_machine = FireflyStateMachine()
     light_engine = LightEngine()
+    presence = PresenceTracker()
     preview = create_preview(args)
     last_state = None
 
@@ -26,6 +28,7 @@ def main():
     bridge = EspNowSerialBridge(
         on_people_count=handle_people_count,
         on_heart_rate=handle_heart_rate,
+        on_presence=presence.update_zone,
     )
 
     print("Home Firefly Engine starting")
@@ -43,8 +46,12 @@ def main():
 
             if not args.preview_only:
                 bridge.read_available()
+                people_positions = presence.active_points()
             else:
                 run_preview_demo_inputs(state_machine)
+                people_positions = presence.demo_points(
+                    state_machine.snapshot()["people_count"]
+                )
 
             now = time.monotonic()
             state_machine.tick(now)
@@ -61,6 +68,7 @@ def main():
                 state=state,
                 people_count=snapshot["people_count"],
                 heart_rate=snapshot["heart_rate"],
+                people_positions=people_positions,
                 homecoming_remaining=snapshot["homecoming_remaining"],
                 now=now,
             )
