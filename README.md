@@ -27,6 +27,7 @@ Home-Firefly-Engine/
 |- state_machine.py
 |- espnow_serial.py
 |- light_engine.py
+|- preview.py
 |- requirements.txt
 |- esp32/
 |  |- bridge_node.ino
@@ -72,6 +73,18 @@ Then run:
 python main.py
 ```
 
+To see the control result on the computer while still driving the ESP32 bridge:
+
+```bash
+python main.py --preview
+```
+
+To test the light logic without any ESP32 connected:
+
+```bash
+python main.py --preview-only
+```
+
 If your Python launcher is `py`, use:
 
 ```bash
@@ -87,6 +100,7 @@ Edit `config.py` or use environment variables.
 | `FIREFLY_SERIAL_PORT` | `COM3` | USB serial port for bridge ESP32 |
 | `FIREFLY_SERIAL_BAUDRATE` | `115200` | Serial baud rate |
 | `FIREFLY_FRAME_RATE` | `20` | Python control packet rate |
+| `FIREFLY_PREVIEW_LIGHTS` | `120` | Number of virtual lights in the desktop preview |
 | `FIREFLY_HOMECOMING_THRESHOLD` | `20` | People count threshold |
 | `FIREFLY_HOMECOMING_DURATION` | `30` | Homecoming duration in seconds |
 | `FIREFLY_PEOPLE_COUNT_MAX` | `20` | People count that maps to max brightness |
@@ -226,6 +240,28 @@ Python to bridge:
 
 The bridge converts this JSON into a small ESP-NOW binary packet before broadcasting to light nodes.
 
+## Desktop Preview
+
+The preview window is a local simulator for the light control parameters. It renders a virtual grid of LEDs using the same visual rules as `esp32/light_node.ino`:
+
+- `waiting`: warm firefly flicker
+- `pulse`: heartbeat-driven local breathing
+- `homecoming`: waves flowing toward the tower coordinate
+
+Run with real ESP32 data and real ESP-NOW output:
+
+```bash
+python main.py --preview
+```
+
+Run without hardware:
+
+```bash
+python main.py --preview-only
+```
+
+The preview is useful for tuning `FIREFLY_TOWER_X`, `FIREFLY_TOWER_Y`, `FIREFLY_PULSE_CENTER_X`, `FIREFLY_PULSE_CENTER_Y`, and `FIREFLY_PULSE_RADIUS` before testing on physical LEDs.
+
 ## ESP-NOW Packet Strategy
 
 Sensor packet:
@@ -257,7 +293,7 @@ This keeps ESP-NOW messages small and avoids fragmented per-pixel frames.
 4. Plug the bridge ESP32 into the computer.
 5. Close Arduino Serial Monitor.
 6. Set `FIREFLY_SERIAL_PORT`.
-7. Run `python main.py`.
+7. Run `python main.py --preview`.
 
 ## Calibration Notes
 

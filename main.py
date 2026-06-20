@@ -1,3 +1,5 @@
+import argparse
+import math
 import time
 
 import config
@@ -7,8 +9,10 @@ from state_machine import FireflyStateMachine
 
 
 def main():
+    args = parse_args()
     state_machine = FireflyStateMachine()
     light_engine = LightEngine()
+    preview = create_preview(args.preview)
     last_state = None
 
     def handle_people_count(value):
@@ -27,11 +31,20 @@ def main():
     print("Home Firefly Engine starting")
     print(f"Control rate: {config.FRAME_RATE:g} fps")
     print(f"Serial bridge: {config.SERIAL_PORT} @ {config.SERIAL_BAUDRATE}")
+    if preview:
+        print(f"Preview enabled: {config.PREVIEW_LIGHTS} virtual lights")
 
     try:
-        bridge.connect()
+        if not args.preview_only:
+            bridge.connect()
         while True:
-            bridge.read_available()
+            if preview and preview.closed and args.preview_only:
+                break
+
+            if not args.preview_only:
+                bridge.read_available()
+            else:
+                run_preview_demo_inputs(state_machine)
 
             now = time.monotonic()
             state_machine.tick(now)
@@ -51,12 +64,50 @@ def main():
                 homecoming_remaining=snapshot["homecoming_remaining"],
                 now=now,
             )
-            bridge.send_control_frame(frame)
+            if not args.preview_only:
+                bridge.send_control_frame(frame)
+            if preview:
+                preview.update(frame)
             time.sleep(config.FRAME_INTERVAL)
     except KeyboardInterrupt:
         print("\nHome Firefly Engine stopping")
     finally:
         bridge.disconnect()
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Home Firefly Engine")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="open a desktop light preview window",
+    )
+    parser.add_argument(
+        "--preview-only",
+        action="store_true",
+        help="run the preview without connecting to the ESP32 serial bridge",
+    )
+    args = parser.parse_args()
+    if args.preview_only:
+        args.preview = True
+    return args
+
+
+def create_preview(enabled):
+    if not enabled:
+        return None
+
+    from preview import LightPreview
+
+    return LightPreview(config.PREVIEW_LIGHTS)
+
+
+def run_preview_demo_inputs(state_machine):
+    now = time.monotonic()
+    people_count = int(12 + 11 * (0.5 + 0.5 * math.sin(now * 0.12)))
+    heart_rate = 78 + 18 * (0.5 + 0.5 * math.sin(now * 0.33))
+    state_machine.update_people_count(people_count, now)
+    state_machine.update_heart_rate(heart_rate, now)
 
 
 if __name__ == "__main__":
