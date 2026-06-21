@@ -5,7 +5,6 @@ Python + ESP32 bridge + ESP-NOW interactive lighting engine. This version remove
 ## Live Site
 
 - [Open the browser preview](https://htmlpreview.github.io/?https://github.com/610lulu/Home-Firefly-Engine/blob/main/web_preview.html)
-- GitHub Pages URL after publishing: <https://610lulu.github.io/Home-Firefly-Engine/>
 
 ## Architecture
 
