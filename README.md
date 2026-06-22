@@ -2,6 +2,10 @@
 
 3 米高、1.2 米直径的立体螺旋灯效装置。YOLOv8n 人检测 + WLED 控制 + Three.js 开发模拟器。
 
+## Live Site
+
+- [Open the simulator preview](https://htmlpreview.github.io/?https://github.com/610lulu/Home-Firefly-Engine/blob/v2/sim/index.html)
+
 ---
 
 ## 1. 工程思路
