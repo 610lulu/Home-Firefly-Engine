@@ -1,0 +1,28 @@
+wled:
+  host: "192.168.1.50"
+  led_count: 300
+  active_bri: 255
+  active_color: [[255, 176, 72]]
+  active_fx: 1        # 1 = breathe
+  active_sx: 128
+  idle_bri: 10
+  idle_color: [[80, 40, 10]]
+
+camera:
+  width: 1280
+  height: 720
+
+yolo:
+  model: "yolov8n.pt"
+  imgsz: 640
+  conf: 0.4
+
+regions:
+  count: 6
+
+loop:
+  fps_target: 15
+
+sim:
+  enabled: true
+  ws_port: 8765
