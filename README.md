@@ -1,401 +1,280 @@
-# Home Firefly Engine
+# Spiral Firefly v2
 
-Python + ESP32 bridge + ESP-NOW interactive lighting engine. This version removes the MQTT broker and uses one ESP32 as a USB serial / ESP-NOW bridge.
+3 米高、1.2 米直径的立体螺旋灯效装置。YOLOv8n 人检测 + WLED 控制 + Three.js 开发模拟器。
 
-## Live Site
+---
 
-- [Open the browser preview](https://htmlpreview.github.io/?https://github.com/610lulu/Home-Firefly-Engine/blob/main/web_preview.html)
+## 1. 工程思路
 
-## Architecture
+### 1.1 装置规格
+| 项 | 值 |
+|---|---|
+| 高度 | 3.0 m |
+| 直径 | 1.2 m(半径 0.6 m) |
+| 圈数 | 5 圈 |
+| 灯带 | WS2812B,60 颗/米,共 20 米 300 颗 |
+| 段数 | 6 段 × 50 颗(WLED Segment 0-5) |
+| 户外 | 灯带 IP65 + 电源 IP65 + Pi/WLED 防水盒 |
 
-```text
-sensor ESP32  -- ESP-NOW -->  bridge ESP32  -- USB Serial -->  Python
-
-Python       -- USB Serial --> bridge ESP32  -- ESP-NOW broadcast --> light ESP32
+### 1.2 架构
+```
+                   [3m 高螺旋灯效装置]
+                          |
+        ┌─────────────────┼─────────────────┐
+        |                 |                 |
+   [Pi Camera V3]   [Pi 5 防水盒]    [WLED 控制器]
+   顶部横梁夹具      YOLOv8n 检测      1 板 ESP32
+   102° 广角         6 区域映射        6 段 × 50 灯
+   朝下 30° 俯视     HTTP POST         5V/20A
+        ↓                 ↓                 ↑
+        └───── 同一 WiFi ────┴──── 192.168.1.x ───┘
+                          |
+                   [Three.js 开发模拟器](浏览器)
+                   localhost:8888(WSL)
 ```
 
-Python still owns the high-level state machine:
+### 1.3 系统流程
+1. Pi Camera V3 Wide(102°)从顶部 3.3m 处俯视
+2. Pi 5 抓帧 → YOLOv8n 检测人 + bbox
+3. bbox 中心 x/y → 6 个区域 → 段级强度
+4. 距离因子(画面 bbox 大小)→ 强度缩放
+5. Pi 5 → WLED HTTP POST → WLED 输出到 6 段 LED
+6. 浏览器模拟器实时显示(开发期调试用)
 
-- `waiting`
-- `pulse`
-- `homecoming`
-
-ESP32 light nodes render the actual LED pixels locally from compact control parameters. This avoids sending large per-pixel JSON frames over ESP-NOW.
-
-## Project Structure
-
-```text
-Home-Firefly-Engine/
-|- main.py
-|- config.py
-|- state_machine.py
-|- espnow_serial.py
-|- light_engine.py
-|- preview.py
-|- web_preview.html
-|- requirements.txt
-|- layouts/
-|  `- example_layout.json
-|- esp32/
-|  |- bridge_node.ino
-|  |- sensor_node.ino
-|  `- light_node.ino
-`- README.md
+### 1.4 数据流(模拟器侧)
+```
+people[]  ←  胶囊人(用户/手动加)
+   ↓
+computeTargetIntensity() → 每段目标强度 [0..1]
+   ↓
+baseIntensity(慢 lerp 平滑) → 实际段强度
+   ↓
+呼吸叠加(sin 0.5Hz, 距离敏感) → segmentIntensity
+   ↓
+updateLeds() → 300 颗 InstancedMesh 颜色
+   ↓
+renderSplitView() → 主视图(devCamera) + Pi 缩略图(camera)
 ```
 
-## Runtime Behavior
+---
 
-- Sensor ESP32 sends `people_count`, `heart_rate`, and its local `SENSOR_X/Y` zone coordinate to the bridge by ESP-NOW.
-- Bridge ESP32 forwards sensor values to Python as newline-delimited serial JSON.
-- Python updates the state machine.
-- More people increases the maximum brightness near active people zones.
-- Lights outside active people zones stay at a very low idle glow.
-- Heart rate switches the system into `pulse` and controls breathing near people.
-- If `people_count > 20`, Python triggers `homecoming` for 30 seconds.
-- During `homecoming`, light ESP32 nodes render waves near active people zones that flow by coordinate toward the configured tower coordinate.
-- After 30 seconds, Python returns to `waiting`.
+## 2. 购买清单(BOM)
 
-## Python Setup
+| # | 物料 | 数量 | 单价(¥) | 小计(¥) | 备注 |
+|---|---|---|---|---|---|
+| 1 | Raspberry Pi 5 (4GB) | 1 | 480 | 480 | 主控 |
+| 2 | Pi Camera V3 Wide (102°) | 1 | 80 | 80 | 广角镜头 |
+| 3 | MicroSD 卡 32GB | 1 | 30 | 30 | Pi 系统 |
+| 4 | WLED 控制器(ESP32,带 GPIO16) | 1 | 25 | 25 | 单板带 300 灯 |
+| 5 | WS2812B 灯带 60 颗/m,IP65,5V | 20m | 35/m | 700 | 300 颗 |
+| 6 | 24V 电源 200W(IP65) | 1 | 80 | 80 | 主线 |
+| 7 | DC-DC 5V/20A 降压模块(IP65) | 1 | 35 | 35 | 末端降压 |
+| 8 | 铝合金圆管 12mm × 1.5m(顶部横梁) | 1 | 15 | 15 | Pi Camera 固定 |
+| 9 | 热镀锌钢丝 8mm × 10m(螺旋骨架) | 1 | 60 | 60 | 弯 5 圈螺旋 |
+| 10 | 3D 打印 Pi Camera 夹具 | 1 | 5 | 5 | 自打 PLA/PETG |
+| 11 | 硅胶减震垫 2mm | 1 | 3 | 3 | 夹具底部 |
+| 12 | Pi 5 防水盒 IP65 | 1 | 35 | 35 | 装 Pi + WLED |
+| 13 | 电源线 1.5mm² × 20m | 1 | 60 | 60 | 24V 主线 |
+| 14 | M3 螺丝 + 螺母(固定夹具) | 4 | 1 | 4 | 横梁夹具 |
+| 15 | 防水接头 + 电缆密封 | 4 | 8 | 32 | 灯带/电源接线 |
+| 16 | 地面锚定件 + 膨胀螺栓 | 3 | 12 | 36 | 户外固定 |
+| **合计** | | | | **¥1680** | 实际部署 |
 
-Install the Python dependency:
+---
 
+## 3. 设计思路
+
+### 3.1 整体造型
+- **立体螺旋**(3m × 1.2m × 5 圈),集中紧凑,视觉冲击强
+- 对应原项目"6 个散布灯带" → 集中为 1 条 20m 长灯带
+- 比"散布独立灯"省线、灯效连贯
+
+### 3.2 段级映射(身高 → 段)
+6 段对应装置从底到顶的高度区间:
+| 段 | 高度区间 | 典型身高 |
+|---|---|---|
+| 0 | 0.0 - 0.8 m | 小孩蹲/坐 |
+| 1 | 0.8 - 1.1 m | 小孩站 |
+| 2 | 1.1 - 1.4 m | 中等小孩/矮人 |
+| 3 | 1.4 - 1.7 m | 中等成人 |
+| 4 | 1.7 - 1.9 m | 高成人 |
+| 5 | 1.9 - 3.0 m | 高个子/伸手 |
+
+身高越高,激活的段越高 → **"高的人亮顶部,矮的人亮底部"**
+
+### 3.3 距离因子(画面 bbox 大小 → 强度)
+| 距离圈 | 半径 | 强度因子 | 呼吸幅度 |
+|---|---|---|---|
+| 近圈 | < 2 m | ×1.0 | ±60% |
+| 中圈 | 2-3.5 m | ×0.25 | ±30% |
+| 远圈 | 3.5-5 m | ×0.05 | ±10% |
+| 外圈 | > 5 m | ×0 | — |
+
+**距离响应:** 远的人贡献微弱,近的人主导装置。
+**YOLO 距离推算:** Pi Camera 102° 广角下,bbox 高度反映人在画面里的大小 → 反推 3D 距离(±20% 精度,互动灯光够用)。
+
+### 3.4 呼吸机制
+- 频率:0.5 Hz(2 秒周期)
+- 幅度:近圈 ±60%、中圈 ±30%、远圈 ±10%
+- 段倾向:顶层段跟"大人比例"呼吸,底层段跟"小孩比例"呼吸
+- 实现:`sin(t) × adultRatio × distanceFactor × MAX_AMP`
+
+### 3.5 人数封顶
+- 30 人封顶,`crowdFactor = sqrt(n / 30)`
+- 5 人 ≈ 41% 强度,15 人 ≈ 71% 强度,30 人 = 100%
+- 用 sqrt 而非线性,**前段增长快,后段平缓**,5 个人已经很亮
+
+### 3.6 Homecoming 模式(人数 > 30 触发)
+**目的:** 当装置周围超过 30 人时,触发"展示秀"
+
+**10 秒波带流程:**
+- t=0~10s:300 颗 LED 按 33ms 间隔依次触发
+- 每颗 LED 生命周期:**0.5s 上升 + 4.5s 衰减 = 5s 总寿命**
+- 任意时刻约 150 颗 LED 在亮,**形成连续推进的"光带"**
+- 颜色:HSL hue 0.08(橙)→ 0.65(蓝紫),**暖→冷渐变**
+
+**5 秒冷却期:**
+- 10s 后强制退出 homecoming,设置 5s 冷却
+- 避免人数持续 > 30 时反复触发
+- 5s 后冷却清除,可以再次触发
+
+**触发条件:**
+- 自动:`state.people.length > 30`(模拟器)/ `bbox_count > 30`(真机)
+- 手动:控制台"🎆 Homecoming"按钮
+
+### 3.7 Pi Camera 固定方案
+**方案 1:顶框横梁夹具(已实施)**
+- 顶部圆框上方 5cm,加 1 根 1.2m 铝合金横梁(直径 12mm)
+- 横梁中央:3D 打印 Pi Camera 夹具
+- 夹具底部:2mm 硅胶减震垫(吸收横梁振动)
+- Pi 5 + 防水盒(可装在横梁附近或下到地面)
+
+**优点:** 结构简单、防水容易、维护方便、风阻最小
+**减震:** 硅胶垫吸收低频振动(尤其户外风载)
+
+---
+
+## 4. 激发机制(互动设计)
+
+### 4.1 灯光激发层次(由弱到强)
+| 层次 | 触发 | 视觉 |
+|---|---|---|
+| **L0 静默** | 装置周围无人 | 全部暗橙(几乎不可见) |
+| **L1 探测** | 1 个远圈人(>3.5m) | 微弱暖光(5% 强度) |
+| **L2 中距离** | 1-3 个中圈人(2-3.5m) | 中段灯亮(25% 强度),轻微呼吸 |
+| **L3 近距离** | 1-3 个近圈人(<2m) | 全段都亮(60-100%),强烈呼吸 |
+| **L4 多人大人主导** | 多人 + 大人比例高 | 顶层灯呼吸强,底层暗 |
+| **L5 多人小孩主导** | 多人 + 小孩比例高 | 底层灯呼吸强,顶层暗 |
+| **L6 Homecoming** | 人数 > 30 | 10 秒波带秀,暖→冷 |
+
+### 4.2 呼吸方向与人数组成
+- **顶层呼吸强** ↔ **大人多**(1.5-2.0m 身高 → 段 3-5)
+- **底层呼吸强** ↔ **小孩多**(0.6-1.3m 身高 → 段 0-2)
+- 设计意图:**让用户直观感知"人群组成"**,不同身高的人在装置不同位置被识别
+
+### 4.3 距离敏感(核心互动)
+装置周围 5m × 5m 地面分 3 圈:
+- **近圈 (<2m)**:走进装置时,装置会"强烈响应"——这是最直观的互动反馈
+- **中圈 (2-3.5m)**:中等响应——走到装置中距离,看到装置"注意到我"
+- **远圈 (3.5-5m)**:弱响应——远的人看不太清,但装置"知道"有人
+
+**隐喻:** 装置像一个"好奇的生物",**人越走近,它越"清醒"**。
+
+### 4.4 Homecoming 的戏剧性
+- 30 人门槛 → 触发秀有"门槛感",不是随时都有
+- 10 秒波带 → 让人群有时间**观看和拍照**,强化记忆
+- 暖→冷渐变 → 视觉上"装置在升温/降温"
+- 5 秒冷却 → 避免反复触发造成视觉疲劳
+
+### 4.5 模拟器中的互动测试
+| 操作 | 看到什么 |
+|---|---|
+| + 1 人 | 灯按身高亮对应段 |
+| 让人走近装置 | 段强度从弱到强(距离因子) |
+| 加人到 33 | 自动触发 10 秒 homecoming 秀 |
+| 🎨 显示段编号 | 不同段不同色,直观看到段 0-5 范围 |
+| 鼠标拖主视图 | 绕装置转,看 3D 全景 |
+
+---
+
+## 5. 目录结构
+
+```
+v2/
+├── README.md                    # 本文档
+├── pi/                          # Pi 5 真机端代码
+│   ├── main.py                  # 主循环(YOLO 检测 → WLED POST)
+│   ├── detector.py              # YOLOv8n 检测 + 6 区分块
+│   ├── camera.py                # Pi Camera V3 采集
+│   ├── wled_client.py           # WLED HTTP 客户端
+│   ├── sim_server.py            # WebSocket 状态广播(给模拟器)
+│   ├── config.yaml              # WLED IP / 灯数 / 段配置
+│   └── requirements.txt         # ultralytics/opencv/picamera2
+├── sim/                         # Three.js 开发模拟器
+│   ├── index.html               # 控制台 + HUD + 状态
+│   ├── spiral.js                # 螺旋建模 + 灯珠 + 6 段 + Pi Camera 实物
+│   └── vendor/                  # 本地 Three.js 1.3MB + OrbitControls
+└── docs/                        # 文档
+    ├── bom.md                   # 物料清单
+    └── setup.md                 # 5 天装配流程
+```
+
+---
+
+## 6. 启动
+
+### 6.1 模拟器(开发期)
 ```bash
+cd v2/sim
+python3 -m http.server 8888
+# 浏览器打开 http://localhost:8888
+```
+
+### 6.2 Pi 5 真机(部署期)
+```bash
+# 系统:Raspberry Pi OS Bookworm 64-bit
+sudo apt update
+sudo apt install python3-pip python3-venv
+cd pi/
+python3 -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
-```
-
-Or install directly:
-
-```bash
-pip install pyserial
-```
-
-Set the serial port used by the bridge ESP32. In PowerShell:
-
-```powershell
-$env:FIREFLY_SERIAL_PORT = "COM5"
-```
-
-Then run:
-
-```bash
 python main.py
 ```
 
-To see the control result on the computer while still driving the ESP32 bridge:
-
-```bash
-python main.py --preview
-```
-
-To test the light logic without any ESP32 connected:
-
-```bash
-python main.py --preview-only
-```
-
-To preview on a real layout with light labels:
-
-```bash
-python main.py --preview-only --preview-layout layouts/example_layout.json --preview-labels
-```
-
-To test immediately in a browser without Python, ESP32, or sensor data, open:
-
-```text
-web_preview.html
-```
-
-If your Python launcher is `py`, use:
-
-```bash
-py -3 main.py
-```
-
-## Python Configuration
-
-Edit `config.py` or use environment variables.
-
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `FIREFLY_SERIAL_PORT` | `COM3` | USB serial port for bridge ESP32 |
-| `FIREFLY_SERIAL_BAUDRATE` | `115200` | Serial baud rate |
-| `FIREFLY_FRAME_RATE` | `20` | Python control packet rate |
-| `FIREFLY_PREVIEW_LIGHTS` | `120` | Number of virtual lights in the desktop preview |
-| `FIREFLY_PREVIEW_LAYOUT` | empty | JSON layout file for preview coordinates |
-| `FIREFLY_PREVIEW_BACKGROUND` | empty | PNG/GIF drawing shown behind the preview lights |
-| `FIREFLY_PREVIEW_LABELS` | `0` | Set to `1` to show light labels |
-| `FIREFLY_MAX_PRESENCE_POINTS` | `6` | Max active people/zone points sent to light nodes |
-| `FIREFLY_PRESENCE_RADIUS` | `0.22` | Distance around a person/zone where lights can brighten |
-| `FIREFLY_PRESENCE_TIMEOUT` | `3` | Seconds before a quiet sensor zone fades out |
-| `FIREFLY_IDLE_BRIGHTNESS` | `0.012` | Very low glow when no one is nearby |
-| `FIREFLY_HOMECOMING_THRESHOLD` | `20` | People count threshold |
-| `FIREFLY_HOMECOMING_DURATION` | `30` | Homecoming duration in seconds |
-| `FIREFLY_PEOPLE_COUNT_MAX` | `20` | People count that maps to max brightness |
-| `FIREFLY_TOWER_X` | `0.5` | Tower X coordinate, normalized 0..1 |
-| `FIREFLY_TOWER_Y` | `0.08` | Tower Y coordinate, normalized 0..1 |
-| `FIREFLY_PULSE_CENTER_X` | `0.38` | Pulse center X coordinate |
-| `FIREFLY_PULSE_CENTER_Y` | `0.62` | Pulse center Y coordinate |
-| `FIREFLY_PULSE_RADIUS` | `0.32` | Pulse influence radius |
-
-## ESP32 Setup
-
-Install ESP32 board support in Arduino IDE.
-
-Required libraries:
-
-- `ArduinoJson` for `bridge_node.ino`
-- `FastLED` for `light_node.ino`
-
-No Wi-Fi router, MQTT broker, or `PubSubClient` is needed.
-
-All ESP32 sketches must use the same channel:
-
-```cpp
-const uint8_t ESPNOW_CHANNEL = 1;
-```
-
-### 1. Bridge Node
-
-Open and flash:
-
-```text
-esp32/bridge_node.ino
-```
-
-The bridge:
-
-- Receives sensor packets by ESP-NOW.
-- Prints sensor data to USB serial as JSON.
-- Reads Python control JSON from USB serial.
-- Broadcasts compact control packets by ESP-NOW to light nodes.
-
-Close Arduino Serial Monitor before running Python, because only one program can own the serial port at a time.
-
-### 2. Sensor Node
-
-Open and flash:
-
-```text
-esp32/sensor_node.ino
-```
-
-By default:
-
-```cpp
-const bool SIMULATION_MODE = true;
-```
-
-It publishes changing demo values once per second. To connect real sensors, set:
-
-```cpp
-const bool SIMULATION_MODE = false;
-```
-
-Then replace:
-
-```cpp
-readPeopleCount()
-readHeartRate()
-```
-
-with your real sensor logic.
-
-Set the sensor's physical zone coordinate in normalized installation space:
-
-```cpp
-const float SENSOR_X = 0.38;
-const float SENSOR_Y = 0.62;
-```
-
-If you use multiple sensor ESP32 nodes, place each one at a different `SENSOR_X/Y`. Those coordinates define which nearby lights are allowed to brighten.
-
-### 3. Light Node
-
-Open and flash:
-
-```text
-esp32/light_node.ino
-```
-
-Set your LED parameters:
-
-```cpp
-const uint8_t LED_PIN = 5;
-const uint16_t NUM_LEDS = 60;
-```
-
-If you have multiple light ESP32 nodes, give each one a different normalized fixture area:
-
-```cpp
-const float FIXTURE_OFFSET_X = 0.0;
-const float FIXTURE_OFFSET_Y = 0.0;
-const float FIXTURE_SCALE_X = 1.0;
-const float FIXTURE_SCALE_Y = 1.0;
-```
-
-For example, the left half of an installation could use:
-
-```cpp
-const float FIXTURE_OFFSET_X = 0.0;
-const float FIXTURE_SCALE_X = 0.5;
-```
-
-The right half could use:
-
-```cpp
-const float FIXTURE_OFFSET_X = 0.5;
-const float FIXTURE_SCALE_X = 0.5;
-```
-
-## Serial Protocol
-
-Bridge to Python:
-
-```json
-{"type":"sensor","zone_id":"AA:BB:CC:DD:EE:FF","people_count":12,"heart_rate":78,"x":0.38,"y":0.62,"sequence":42}
-```
-
-Python to bridge:
-
-```json
-{
-  "type": "control",
-  "frame": 120,
-  "state": "pulse",
-  "people_count": 12,
-  "heart_rate": 78,
-  "brightness": 0.632,
-  "idle_brightness": 0.012,
-  "presence_radius": 0.22,
-  "people_positions": [
-    {"x": 0.38, "y": 0.62, "weight": 12}
-  ],
-  "tower_x": 0.5,
-  "tower_y": 0.08,
-  "pulse_x": 0.38,
-  "pulse_y": 0.62,
-  "pulse_radius": 0.32,
-  "homecoming_remaining": 0
-}
-```
-
-The bridge converts this JSON into a small ESP-NOW binary packet before broadcasting to light nodes.
-
-`people_positions` is the important part for local lighting. A lamp only becomes bright when it is near one of these points. With no active positions, lamps remain at `idle_brightness`.
-
-## Desktop Preview
-
-The preview window is a local simulator for the light control parameters. It renders a virtual grid of LEDs using the same visual rules as `esp32/light_node.ino`:
-
-- `waiting`: warm firefly flicker
-- `pulse`: heartbeat-driven breathing near people
-- `homecoming`: waves near people flowing toward the tower coordinate
-
-White rings mark simulated people/active zones.
-
-Run with real ESP32 data and real ESP-NOW output:
-
-```bash
-python main.py --preview
-```
-
-Run without hardware:
-
-```bash
-python main.py --preview-only
-```
-
-Run with a labeled layout file:
-
-```bash
-python main.py --preview-only --preview-layout layouts/example_layout.json --preview-labels
-```
-
-Run with a drawing or floor plan behind the lights:
-
-```bash
-python main.py --preview-only --preview-layout layouts/example_layout.json --preview-background path/to/floorplan.png --preview-labels
-```
-
-Layout files use normalized coordinates from `0.0` to `1.0`:
-
-```json
-{
-  "background": "floorplan.png",
-  "show_labels": true,
-  "lights": [
-    {"id": 0, "name": "A01", "x": 0.10, "y": 0.78},
-    {"id": 1, "name": "A02", "x": 0.18, "y": 0.72}
-  ]
-}
-```
-
-`id` should match the LED index or fixture channel. `name` is the label shown in the preview. `x` and `y` are positions on the drawing, where `(0, 0)` is top-left and `(1, 1)` is bottom-right.
-
-The preview is useful for tuning `FIREFLY_TOWER_X`, `FIREFLY_TOWER_Y`, `FIREFLY_PULSE_CENTER_X`, `FIREFLY_PULSE_CENTER_Y`, and `FIREFLY_PULSE_RADIUS` before testing on physical LEDs. The layout affects the computer preview; for physical LEDs to match exactly, mirror the same coordinates or fixture areas in `esp32/light_node.ino`.
-
-## Browser Preview
-
-`web_preview.html` is a standalone browser preview for quick testing. It does not require Python, serial, ESP32, or live sensor data.
-
-Open it directly in a browser:
-
-```text
-web_preview.html
-```
-
-The page starts in demo mode and simulates people count, heart rate, `pulse`, and `homecoming`. You can:
-
-- switch state manually
-- move people and heart-rate sliders
-- toggle light labels
-- load a layout JSON file
-- load a drawing image behind the lights
-
-White rings show simulated people/active zones. Only lights close to those rings brighten.
-
-Use the same normalized layout format as `layouts/example_layout.json`.
-
-## ESP-NOW Packet Strategy
-
-Sensor packet:
-
-- packet type
-- people count
-- heart rate
-- sensor zone coordinate
-- sequence number
-
-Control packet:
-
-- packet type
-- state id
-- people count
-- heart rate
-- frame number
-- brightness
-- idle brightness
-- presence radius
-- active people/zone coordinates
-- tower coordinate
-- pulse center and radius
-- homecoming remaining time
-
-This keeps ESP-NOW messages small and avoids fragmented per-pixel frames.
-
-## Startup Order
-
-1. Flash `bridge_node.ino`.
-2. Flash `sensor_node.ino`.
-3. Flash `light_node.ino`.
-4. Plug the bridge ESP32 into the computer.
-5. Close Arduino Serial Monitor.
-6. Set `FIREFLY_SERIAL_PORT`.
-7. Run `python main.py --preview`.
-
-## Calibration Notes
-
-- Change `TOWER_COORD` in `config.py` to move the homecoming target.
-- Change `PULSE_CENTER` and `PULSE_RADIUS` in `config.py` to place the heartbeat breathing region.
-- Replace the generated grid in `light_node.ino` if you have measured LED coordinates.
-- Keep every ESP32 on the same `ESPNOW_CHANNEL`.
+### 6.3 WLED 配置
+1. 刷 ESP32 固件(WLED 官方 web installer)
+2. 配 WiFi,记 IP(如 192.168.1.50)
+3. Config → LED Preferences:
+   - LED type: WS281x
+   - Color Order: GRB
+   - LED count: 300
+   - GPIO: 16
+   - Max Current: 18000mA
+4. Config → LED Segments:
+   - 创建 6 段,每段 50 灯(0-49, 50-99, 100-149, ...)
+   - Grouping: Individual LEDs
+
+---
+
+## 7. 关键技术决策
+
+| 决策 | 替代方案 | 理由 |
+|---|---|---|
+| Pi 5 + 1 块 WLED(单板) | 3 块 ESP32 + Python 桥 | YOLO 跑不动 Arduino,集中后单板能力够 |
+| 立体螺旋集中布置 | 6 个散布灯带 | 视觉冲击强、对应原项目 6 zone 概念 |
+| 顶框横梁夹具固定 Pi | 探针臂 / 悬挂杆 | 结构简单、防水容易、风阻最小 |
+| 身高→段(离散) | 6 段离散 → 300 颗连续 | 离散更适合互动感,段间 250ms 光流 |
+| 距离因子分段(< 2m ×1.0) | 线性衰减 | 拉开互动差距(20× 强度差) |
+| Homecoming 10 秒 | 持续高亮 | 给观众"观看时间",有戏剧感 |
+| 暖→冷渐变 | 单色 / 全彩虹 | 隐喻"装置升温后降温",视觉连贯 |
+
+---
+
+## 8. 待完成
+
+- [ ] Pi 5 真机部署(YOLO 模型训练/下载 + WLED 配 6 段)
+- [ ] 户外钢丝骨架施工(弯 5 圈、缠灯带、装防水盒)
+- [ ] 调参:实测距离因子精度(±20% 是否够)
+- [ ] 调参:呼吸频率/幅度是否需要适配人流量
+- [ ] 调参:Homecoming 触发阈值(30 是否合适)
