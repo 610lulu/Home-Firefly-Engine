@@ -3,6 +3,7 @@ wled:
   led_count: 300
   active_bri: 255
   active_color: [[255, 176, 72]]
+  homecoming_color: [[255, 141, 161]]
   active_fx: 1        # 1 = breathe
   active_sx: 128
   idle_bri: 10
@@ -19,6 +20,40 @@ yolo:
 
 regions:
   count: 6
+
+interaction:
+  segment_min_bri: 12
+  segment_max_bri: 255
+  intensity_smoothing: 2.0
+  crowd_max: 30
+  distance_bands:
+    near:
+      bbox_height: 0.32
+      bbox_area: 0.080
+      factor: 1.0
+    mid:
+      bbox_height: 0.18
+      bbox_area: 0.030
+      factor: 0.35
+    far:
+      bbox_height: 0.09
+      bbox_area: 0.010
+      factor: 0.12
+  height_levels:
+    - { max_bbox_height: 0.12, segment: 0 }
+    - { max_bbox_height: 0.18, segment: 1 }
+    - { max_bbox_height: 0.25, segment: 2 }
+    - { max_bbox_height: 0.34, segment: 3 }
+    - { max_bbox_height: 0.46, segment: 4 }
+    - { max_bbox_height: 1.00, segment: 5 }
+  breath:
+    frequency_hz: 0.5
+    max_amplitude: 0.50
+
+homecoming:
+  people_threshold: 30
+  duration_sec: 10.0
+  cooldown_sec: 5.0
 
 loop:
   fps_target: 15

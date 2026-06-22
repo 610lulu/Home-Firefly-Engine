@@ -12,6 +12,7 @@ class SimBroadcaster:
     def __init__(self, port=8765):
         self.port = port
         self.clients = set()
+        self._state = {}
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -22,7 +23,7 @@ class SimBroadcaster:
         from http.server import BaseHTTPRequestHandler
         import socketserver
 
-        state = {"latest": {}}
+        broadcaster = self
 
         class H(BaseHTTPRequestHandler):
             def log_message(self, *a, **k):
@@ -30,7 +31,7 @@ class SimBroadcaster:
 
             def do_GET(self):
                 if self.path == "/state.json":
-                    body = json.dumps(state["latest"]).encode()
+                    body = json.dumps(broadcaster._state).encode()
                     self.send_response(200)
                     self.send_header("Content-Type", "application/json")
                     self.send_header("Access-Control-Allow-Origin", "*")
@@ -48,10 +49,7 @@ class SimBroadcaster:
     def broadcast(self, data: dict) -> None:
         # Stash latest; sim polls /state.json
         # (no in-memory list needed for dev sim)
-        try:
-            self._server.state = data  # naive
-        except Exception:
-            pass
+        self._state = data
 
     def close(self):
         try:

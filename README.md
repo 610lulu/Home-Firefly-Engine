@@ -82,7 +82,9 @@ renderSplitView() → 主视图(devCamera) + Pi 缩略图(camera)
 | 14 | M3 螺丝 + 螺母(固定夹具) | 4 | 1 | 4 | 横梁夹具 |
 | 15 | 防水接头 + 电缆密封 | 4 | 8 | 32 | 灯带/电源接线 |
 | 16 | 地面锚定件 + 膨胀螺栓 | 3 | 12 | 36 | 户外固定 |
-| **合计** | | | | **¥1680** | 实际部署 |
+| **合计** | | | | **¥1680** | 基础版实际部署 |
+
+> 预算说明：README 表格为基础版（约 ¥1680）；`docs/bom.md` 为完整防水部署版（约 ¥1875），包含更保守的防水、电源与结构余量。
 
 ---
 
@@ -217,6 +219,7 @@ v2/
 ├── sim/                         # Three.js 开发模拟器
 │   ├── index.html               # 控制台 + HUD + 状态
 │   ├── spiral.js                # 螺旋建模 + 灯珠 + 6 段 + Pi Camera 实物
+│   ├── calibration.html         # Pi Camera 校准页面
 │   └── vendor/                  # 本地 Three.js 1.3MB + OrbitControls
 └── docs/                        # 文档
     ├── bom.md                   # 物料清单
