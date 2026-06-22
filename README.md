@@ -4,7 +4,7 @@
 
 ## Live Site
 
-- [Open the simulator preview](https://htmlpreview.github.io/?https://github.com/610lulu/Home-Firefly-Engine/blob/v2/sim/index.html)
+- [Open the simulator preview](https://610lulu.github.io/Home-Firefly-Engine/)
 
 ---
 
