@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spiral Firefly v2 - Pi Camera Calibration</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: #101312;
+      color: #e8ece9;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main {
+      display: grid;
+      grid-template-columns: minmax(420px, 1fr) 360px;
+      gap: 16px;
+      padding: 16px;
+      min-height: 100vh;
+    }
+    .viewport {
+      position: relative;
+      min-height: calc(100vh - 32px);
+      border: 1px solid #2c3430;
+      background:
+        linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+        radial-gradient(circle at 50% 50%, rgba(255,176,72,0.16), transparent 34%),
+        #151a18;
+      background-size: 48px 48px, 48px 48px, auto, auto;
+      overflow: hidden;
+      border-radius: 8px;
+    }
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+    aside {
+      border: 1px solid #2c3430;
+      border-radius: 8px;
+      background: #171c1a;
+      padding: 14px;
+      overflow: auto;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 18px 0 8px;
+      font-size: 12px;
+      color: #ffb048;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    label {
+      display: grid;
+      grid-template-columns: 1fr 72px;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0;
+      font-size: 13px;
+      color: #cbd3cf;
+    }
+    input[type="range"] { width: 100%; }
+    output {
+      color: #ffcf78;
+      font-variant-numeric: tabular-nums;
+      text-align: right;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .metric {
+      border: 1px solid #2c3430;
+      border-radius: 6px;
+      padding: 8px;
+      background: #101312;
+    }
+    .metric span {
+      display: block;
+      color: #87908b;
+      font-size: 11px;
+    }
+    .metric b {
+      display: block;
+      margin-top: 4px;
+      color: #e8ece9;
+      font-size: 18px;
+      font-variant-numeric: tabular-nums;
+    }
+    pre {
+      min-height: 120px;
+      max-height: 220px;
+      overflow: auto;
+      margin: 8px 0 0;
+      padding: 10px;
+      border-radius: 6px;
+      background: #0b0e0d;
+      color: #b9c2bd;
+      font-size: 11px;
+      white-space: pre-wrap;
+    }
+    button {
+      width: 100%;
+      height: 36px;
+      border: 1px solid #43504a;
+      border-radius: 6px;
+      background: #222a26;
+      color: #f2f6f3;
+      cursor: pointer;
+    }
+    button:hover { border-color: #ffb048; }
+    .legend {
+      position: absolute;
+      left: 14px;
+      bottom: 14px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(0,0,0,0.55);
+      color: #d8dfdb;
+      font-size: 12px;
+      pointer-events: none;
+    }
+    @media (max-width: 860px) {
+      main { grid-template-columns: 1fr; }
+      .viewport { min-height: 62vh; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="viewport">
+      <canvas id="calibration-canvas"></canvas>
+      <div class="legend">橙色框 = 当前 bbox 样本 · 白线 = 6 区域 · 蓝圈 = 估算距离圈</div>
+    </section>
+    <aside>
+      <h1>Pi Camera Calibration Mode</h1>
+
+      <h2>Camera Frame</h2>
+      <label>水平边界 X <input id="split-x" type="range" min="0.25" max="0.75" step="0.01" value="0.50"><output></output></label>
+      <label>上边界 Y <input id="split-y1" type="range" min="0.20" max="0.45" step="0.01" value="0.33"><output></output></label>
+      <label>下边界 Y <input id="split-y2" type="range" min="0.55" max="0.85" step="0.01" value="0.66"><output></output></label>
+
+      <h2>Detection Thresholds</h2>
+      <label>置信度 <input id="confidence" type="range" min="0.10" max="0.90" step="0.01" value="0.40"><output></output></label>
+      <label>近圈 bbox 高 <input id="near-h" type="range" min="0.12" max="0.60" step="0.01" value="0.32"><output></output></label>
+      <label>中圈 bbox 高 <input id="mid-h" type="range" min="0.08" max="0.42" step="0.01" value="0.18"><output></output></label>
+      <label>远圈 bbox 高 <input id="far-h" type="range" min="0.03" max="0.24" step="0.01" value="0.09"><output></output></label>
+
+      <h2>Sample Bbox</h2>
+      <label>样本 X <input id="bbox-x" type="range" min="0.05" max="0.95" step="0.01" value="0.50"><output></output></label>
+      <label>样本 Y <input id="bbox-y" type="range" min="0.05" max="0.95" step="0.01" value="0.58"><output></output></label>
+      <label>样本高度 <input id="bbox-h" type="range" min="0.05" max="0.70" step="0.01" value="0.28"><output></output></label>
+
+      <div class="metrics">
+        <div class="metric"><span>Region</span><b id="region">0</b></div>
+        <div class="metric"><span>Distance</span><b id="distance">0.00</b></div>
+        <div class="metric"><span>Height Level</span><b id="height-level">0</b></div>
+        <div class="metric"><span>Bbox Area</span><b id="bbox-area">0.000</b></div>
+      </div>
+
+      <h2>Live Pi State</h2>
+      <button id="poll">轮询 http://localhost:8765/state.json</button>
+      <pre id="state-json">等待 Pi 状态...</pre>
+    </aside>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('calibration-canvas');
+    const ctx = canvas.getContext('2d');
+    const ids = ['split-x', 'split-y1', 'split-y2', 'confidence', 'near-h', 'mid-h', 'far-h', 'bbox-x', 'bbox-y', 'bbox-h'];
+    const controls = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+    const outputs = ids.map(id => controls[id].parentElement.querySelector('output'));
+
+    const heightLevels = [
+      { max: 0.12, segment: 0 },
+      { max: 0.18, segment: 1 },
+      { max: 0.25, segment: 2 },
+      { max: 0.34, segment: 3 },
+      { max: 0.46, segment: 4 },
+      { max: 1.00, segment: 5 },
+    ];
+
+    function value(id) {
+      return parseFloat(controls[id].value);
+    }
+
+    function regionFor(x, y) {
+      const col = x < value('split-x') ? 0 : 1;
+      const row = y < value('split-y1') ? 0 : y < value('split-y2') ? 1 : 2;
+      return row * 2 + col;
+    }
+
+    function distanceFactor(h) {
+      if (h >= value('near-h')) return 1.00;
+      if (h >= value('mid-h')) return 0.35;
+      if (h >= value('far-h')) return 0.12;
+      return 0.00;
+    }
+
+    function heightLevel(h) {
+      return heightLevels.find(level => h <= level.max).segment;
+    }
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * scale);
+      canvas.height = Math.round(rect.height * scale);
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+      draw();
+    }
+
+    function draw() {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      const sx = value('split-x') * w;
+      const y1 = value('split-y1') * h;
+      const y2 = value('split-y2') * h;
+      ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, 0); ctx.lineTo(sx, h);
+      ctx.moveTo(0, y1); ctx.lineTo(w, y1);
+      ctx.moveTo(0, y2); ctx.lineTo(w, y2);
+      ctx.stroke();
+
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0; c < 2; c++) {
+          ctx.fillStyle = 'rgba(255,255,255,0.62)';
+          ctx.font = '600 28px system-ui';
+          ctx.fillText(String(r * 2 + c), c ? sx + 18 : 18, [40, y1 + 40, y2 + 40][r]);
+        }
+      }
+
+      const cx = w / 2;
+      const cy = h / 2;
+      ctx.strokeStyle = 'rgba(127,200,255,0.38)';
+      [0.22, 0.38, 0.54].forEach(radius => {
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.min(w, h) * radius, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      const boxH = value('bbox-h') * h;
+      const boxW = boxH * 0.42;
+      const boxX = value('bbox-x') * w - boxW / 2;
+      const boxY = value('bbox-y') * h - boxH / 2;
+      ctx.strokeStyle = '#ffb048';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(boxX, boxY, boxW, boxH);
+      ctx.fillStyle = 'rgba(255,176,72,0.16)';
+      ctx.fillRect(boxX, boxY, boxW, boxH);
+
+      const area = value('bbox-h') * value('bbox-h') * 0.42;
+      document.getElementById('region').textContent = regionFor(value('bbox-x'), value('bbox-y'));
+      document.getElementById('distance').textContent = distanceFactor(value('bbox-h')).toFixed(2);
+      document.getElementById('height-level').textContent = heightLevel(value('bbox-h'));
+      document.getElementById('bbox-area').textContent = area.toFixed(3);
+      outputs.forEach((out, i) => { out.textContent = value(ids[i]).toFixed(2); });
+    }
+
+    async function pollState() {
+      const el = document.getElementById('state-json');
+      try {
+        const res = await fetch('http://localhost:8765/state.json', { cache: 'no-store' });
+        el.textContent = JSON.stringify(await res.json(), null, 2);
+      } catch (err) {
+        el.textContent = `无法读取 Pi 状态: ${err.message}`;
+      }
+    }
+
+    ids.forEach(id => controls[id].addEventListener('input', draw));
+    document.getElementById('poll').addEventListener('click', pollState);
+    window.addEventListener('resize', resize);
+    resize();
+    setInterval(pollState, 1500);
+  </script>
+</body>
+</html>

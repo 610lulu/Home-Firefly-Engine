@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Spiral Firefly v2 - Dev Sim</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; background: #0a0a0a; font-family: -apple-system, sans-serif; color: #ddd; }
+    #app { position: fixed; inset: 0; }
+
+    /* HUD: top-left stats */
+    #hud {
+      position: absolute; top: 12px; left: 12px;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(6px);
+      padding: 10px 14px; border-radius: 8px; font-size: 12px; line-height: 1.7;
+      border: 1px solid rgba(255,255,255,0.08); pointer-events: none;
+      z-index: 5;
+    }
+    #hud .row { display: flex; justify-content: space-between; gap: 16px; }
+    #hud .label { opacity: 0.6; }
+    #hud .val { font-weight: 600; color: #ffb048; font-variant-numeric: tabular-nums; }
+
+    /* Control panel: bottom right (避开调试视角) */
+    #panel {
+      position: fixed; bottom: 12px; right: 12px;
+      background: rgba(20,20,20,0.92); backdrop-filter: blur(8px);
+      padding: 12px 14px; border-radius: 10px; font-size: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      width: 200px;
+      max-height: 60vh;
+      overflow-y: auto;
+      z-index: 10;
+    }
+    #panel h3 { margin: 0 0 12px 0; font-size: 14px; color: #ffb048; font-weight: 600; }
+    #panel .group { margin-bottom: 12px; }
+    #panel .group-title { font-size: 11px; opacity: 0.5; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    #panel button {
+      width: 100%; padding: 8px 12px; margin-bottom: 4px;
+      background: #2a2a2a; color: #ddd; border: 1px solid #3a3a3a;
+      border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.15s;
+    }
+    #panel button:hover { background: #3a3a3a; border-color: #ffb048; }
+    #panel button.primary { background: #ffb048; color: #1a1a1a; border-color: #ffb048; font-weight: 600; }
+    #panel button.primary:hover { background: #ffc068; }
+    #panel button.danger { border-color: #b04848; color: #b04848; }
+    #panel .btn-row { display: flex; gap: 4px; }
+    #panel .btn-row button { flex: 1; }
+    #panel .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; }
+    #panel input[type=range] { flex: 1; }
+    #panel .count-display {
+      text-align: center; font-size: 32px; font-weight: 700; color: #ffb048;
+      font-variant-numeric: tabular-nums; padding: 6px 0;
+    }
+    #panel .region-bars { margin-top: 4px; }
+    #panel .region-bar {
+      display: flex; align-items: center; gap: 6px; font-size: 10px; margin-bottom: 3px;
+    }
+    #panel .region-bar .id { width: 16px; opacity: 0.5; }
+    #panel .region-bar .bar { flex: 1; height: 6px; background: #1a1a1a; border-radius: 3px; overflow: hidden; }
+    #panel .region-bar .fill { height: 100%; background: linear-gradient(90deg, #ffb048, #ffd078); transition: width 0.3s; }
+
+    /* Bottom: legend */
+    #legend {
+      position: absolute; bottom: 12px; left: 200px;
+      background: rgba(0,0,0,0.55); padding: 8px 12px; border-radius: 6px;
+      font-size: 11px; opacity: 0.7; pointer-events: none;
+      max-width: calc(100vw - 430px);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      z-index: 5;
+    }
+
+    @media (max-width: 760px), (max-height: 520px) {
+      #legend { display: none; }
+    }
+
+    /* Status bar: bottom-left,避开控制台 */
+    #status {
+      position: absolute; bottom: 12px; left: 12px;
+      background: rgba(0,0,0,0.55); padding: 6px 10px; border-radius: 4px;
+      font-size: 10px; opacity: 0.6;
+      z-index: 5;
+    }
+    #calibration-link {
+      position: absolute; top: 12px; right: 12px;
+      z-index: 6;
+      color: #ffcf78;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12px;
+      text-decoration: none;
+    }
+    #calibration-link:hover { border-color: #ffb048; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <a id="calibration-link" href="./calibration.html">Calibration</a>
+
+  <div id="hud">
+    <div class="row"><span class="label">摄像头</span><span class="val" id="cam-info">Pi Wide 102° · 3.3m 高</span></div>
+    <div class="row"><span class="label">区域</span><span class="val">2×3 网格 (6 段)</span></div>
+    <div class="row"><span class="label">视场覆盖</span><span class="val">直径 ~5m</span></div>
+  </div>
+
+  <div id="panel">
+    <h3>🎮 控制台</h3>
+
+    <div class="group">
+      <div class="group-title">人数</div>
+      <div class="count-display" id="people-count">0</div>
+      <div class="btn-row">
+        <button class="primary" id="btn-add">+ 1 人</button>
+        <button id="btn-remove">- 1 人</button>
+      </div>
+      <button id="btn-clear" class="danger">清空</button>
+    </div>
+
+    <div class="group">
+      <div class="group-title">行为</div>
+      <div class="slider-row">
+        <span style="width:50px">速度</span>
+        <input type="range" id="speed" min="0" max="2" step="0.1" value="1">
+        <span id="speed-val" style="width:24px;text-align:right">1.0x</span>
+      </div>
+      <button id="btn-pause">⏸ 暂停走动</button>
+    </div>
+
+    <div class="group">
+      <div class="group-title">模型</div>
+      <div class="btn-row">
+        <button class="primary" id="btn-mesh-capsule">胶囊人</button>
+        <button id="btn-mesh-cylinder">圆柱</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">状态</div>
+      <div id="status-mode" style="font-size:13px;color:#ffb048;padding:4px 0;">⚪ 正常模式</div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">触发</div>
+      <div class="btn-row">
+        <button id="btn-trigger-homecoming" style="background:#ff8da1;color:#000">🎆 Homecoming</button>
+      </div>
+      <div style="font-size:10px;opacity:0.5">手动触发,人数 > 30 时也自动</div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">视角</div>
+      <div class="btn-row">
+        <button class="primary" id="btn-view-pi">📷 Pi 视角</button>
+        <button id="btn-view-dev">🔄 调试视角</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">调试</div>
+      <button id="btn-debug-seg">🎨 显示段编号(每段不同色)</button>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px">开启后:段 0=青,1=绿,2=黄,3=粉,4=紫,5=蓝</div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">6 段亮度(实时)</div>
+      <div class="region-bars" id="region-bars"></div>
+    </div>
+
+    <div class="group">
+      <div class="group-title">WLED 模拟</div>
+      <button id="btn-wled-toggle">⏸ 暂停 WLED 输出</button>
+      <div style="font-size:10px;opacity:0.5;margin-top:4px">模拟器推 /state.json → Pi 5 接收</div>
+    </div>
+  </div>
+
+  <div id="legend">
+    胶囊人 = 模拟观众(随机身高 0.5-2.0m)  ·  段编号 = 螺旋高度(0 底 → 5 顶)  ·  按身高亮段
+  </div>
+
+  <div id="status">source: keys · v2.1</div>
+
+  <script>
+    // 模块加载前的全局错误捕获
+    window.addEventListener('error', (e) => {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;top:60px;left:12px;background:#b00;color:#fff;padding:8px 12px;border-radius:6px;font:12px monospace;z-index:99999;max-width:900px;white-space:pre-wrap;';
+      el.textContent = `ERR line ${e.lineno}: ${e.message}\n${e.filename || ''}`;
+      document.body.appendChild(el);
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+      const el = document.createElement('div');
+      el.style.cssText = 'position:fixed;top:120px;left:12px;background:#a00;color:#fff;padding:8px 12px;border-radius:6px;font:12px monospace;z-index:99999;max-width:900px;white-space:pre-wrap;';
+      el.textContent = 'UNHANDLED: ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+      document.body.appendChild(el);
+    });
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js",
+        "three/addons/": "./vendor/addons/"
+      }
+    }
+  </script>
+  <script type="module" src="./spiral.js"></script>
+</body>
+</html>
